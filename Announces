@@ -1,0 +1,448 @@
+from fastapi import APIRouter, HTTPException
+from sqlmodel import select
+from database import Teacher_notice, SessionDep, Teacher_note, Teacher_msg, Teacher_homework, Teacher
+from pydantic import BaseModel
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
+
+announces_router = APIRouter(
+tags=["교사_알리미"]
+)
+
+#가정통신문 생성에 사용
+class NoticeCreate(BaseModel):
+name: str
+content: str
+
+#가정통신문 수정에 사용
+class NoticeUpdate(BaseModel):
+name: str | None = None
+content: str | None = None
+
+#교사 메시지(Public 모델)
+class TeacherMsgPublic(BaseModel):
+id: int
+content: str
+
+#숙제 및 과제(Public 모델)
+class TeacherHomeworkPublic(BaseModel):
+id: int
+category: str
+content: str
+deadline: date
+
+#알림장(Public 모델)
+class NoteWithMsgAndHomeworkPublic(BaseModel):
+id: int
+created_at: datetime
+last_modified_at: datetime
+teacher_msgs: list[TeacherMsgPublic] # 메시지 리스트 포함
+teacher_homeworks: list[TeacherHomeworkPublic] # 숙제 리스트 포함
+
+#교사 메시지 생성에 사용
+class MsgCreate(BaseModel):
+content: str
+
+#교사 메시지 수정에 사용
+class MsgUpdate(BaseModel):
+content: str | None = None
+
+#교사 숙제 생성에 사용
+class HomeworkCreate(BaseModel):
+category: str
+content: str
+deadline: date
+
+#교사 숙제 수정에 사용
+class HomeworkUpdate(BaseModel):
+category: str | None = None # 숙제 범주
+content: str | None = None # 숙제 내용
+deadline: date | None = None
+
+#가정통신문
+@announces_router.get("/{teacher_id}/announces/school-notices", summary="특정 교사가 쓴 모든 가정통신문 읽기")
+def read_notice_teacher(teacher_id: int, session: SessionDep) -> list[Teacher_notice]:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+notices = session.exec(select(Teacher_notice).where(Teacher_notice.teacher_id==teacher_id)).all()
+return notices
+
+@announces_router.get("/{teacher_id}/announces/school-notices/{id}", summary="특정 교사가 쓴 특정 가정통신문 읽기")
+def read_notice_id(teacher_id: int, id: int, session: SessionDep) -> Teacher_notice:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+notice = session.exec(
+select(Teacher_notice)
+.where(Teacher_notice.teacher_id==teacher_id, Teacher_notice.id == id)
+).first()
+if not notice:
+raise HTTPException(status_code=404, detail="Teacher_notice not found")
+return notice
+
+@announces_router.post("/{teacher_id}/announces/school-notices", summary="특정 교사가 쓴 가정통신문 생성")
+def create_notice(teacher_id: int, session: SessionDep, notice: NoticeCreate) -> Teacher_notice:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+combined_notice = {"teacher_id": teacher_id, **notice.model_dump()}
+db_notice = Teacher_notice.model_validate(combined_notice)
+db_notice.teacher_id = teacher_id
+session.add(db_notice)
+session.commit()
+session.refresh(db_notice)
+return db_notice
+
+@announces_router.delete("/{teacher_id}/announces/school-notices", summary="특정 교사가 쓴 모든 가정통신문 삭제")
+def delete_notice_teacher(teacher_id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_notices = session.exec(
+select(Teacher_notice)
+.where(Teacher_notice.teacher_id==teacher_id, Teacher_notice.id == teacher_id)
+).all()
+for db_notice in db_notices:
+session.delete(db_notice)
+session.commit()
+return {"ok": True}
+
+@announces_router.delete("/{teacher_id}/announces/school-notices/{id}", summary="특정 교사가 쓴 특정 가정통신문 삭제")
+def delete_notice_id(teacher_id: int, id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_notice = session.exec(
+select(Teacher_notice)
+.where(Teacher_notice.teacher_id==teacher_id, Teacher_notice.id == id)
+).first()
+if not db_notice:
+raise HTTPException(status_code=404, detail="Teacher_notice not found")
+session.delete(db_notice)
+session.commit()
+return {"ok": True}
+
+@announces_router.patch("/{teacher_id}/announces/school-notices/{id}", summary="특정 교사가 쓴 특정 가정통신문 수정")
+def update_notice(teacher_id: int, id: int, session: SessionDep, notice: NoticeUpdate) -> Teacher_notice:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_notice = session.exec(
+select(Teacher_notice)
+.where(Teacher_notice.teacher_id==teacher_id, Teacher_notice.id==id)
+).first()
+if not db_notice:
+raise HTTPException(status_code=404, detail="Teacher_notice not found")
+notice_data = notice.model_dump(exclude_unset=True)
+db_notice.sqlmodel_update(notice_data)
+session.add(db_notice)
+session.commit()
+session.refresh(db_notice)
+return db_notice
+
+#알림장 읽기
+@announces_router.get(
+"/{teacher_id}/announces/teacher-notices",
+response_model=list[NoteWithMsgAndHomeworkPublic],
+summary="특정 교사가 쓴 모든 알림장 읽기")
+def read_note_teacher(teacher_id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+notes = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id == teacher_id)
+).all()
+return notes
+
+@announces_router.get(
+"/{teacher_id}/announces/teacher-notices/{id}",
+response_model=NoteWithMsgAndHomeworkPublic,
+summary="특정 교사가 쓴 특정 알림장 읽기")
+def read_note_id(teacher_id: int, id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id == teacher_id, Teacher_note.id == id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+return note
+
+#알림장 생성
+@announces_router.post("/{teacher_id}/announces/teacher-notices", summary="특정 교사가 쓴 알림장 생성")
+def create_note(teacher_id: int, session: SessionDep) -> Teacher_note:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+today_start = datetime.now(ZoneInfo("Asia/Seoul")).replace(hour=0, minute=0, second=0, microsecond=0)
+today_end = datetime.now(ZoneInfo("Asia/Seoul")).replace(hour=23, minute=59, second=59, microsecond=999999)
+existing_note = session.exec(
+select(Teacher_note)
+.where(
+Teacher_note.teacher_id == teacher_id,
+Teacher_note.created_at >= today_start,
+Teacher_note.created_at <= today_end)
+).first()
+if existing_note:
+raise HTTPException(status_code=409, detail="알림장은 하루에 하나만 작성해야 합니다!")
+db_note = Teacher_note(
+created_at=datetime.now(ZoneInfo("Asia/Seoul")),
+last_modified_at=datetime.now(ZoneInfo("Asia/Seoul")),
+teacher_id=teacher_id,)
+session.add(db_note)
+session.commit()
+session.refresh(db_note)
+return db_note
+
+#알림장 삭제
+@announces_router.delete("/{teacher_id}/announces/teacher-notices", summary="특정 교사가 쓴 모든 알림장 삭제")
+def delete_note_teacher(teacher_id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_notes = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id)
+).all()
+for db_note in db_notes:
+session.delete(db_note)
+session.commit()
+return {"ok": True}
+
+@announces_router.delete("/{teacher_id}/announces/teacher-notices/{id}", summary="특정 교사가 쓴 특정 알림장 삭제")
+def delete_note_id(teacher_id: int, id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==id)
+).first()
+if not db_note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+session.delete(db_note)
+session.commit()
+return {"ok": True}
+
+#교사 메시지
+@announces_router.get("/{teacher_id}/announces/teacher-notices/msg/{note_id}", summary="특정 교사가 쓴 특정 알림장의 모든 교사 메시지 읽기")
+def read_msg_note(teacher_id: int, note_id: int, session: SessionDep) -> list[Teacher_msg]:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+return note.teacher_msgs
+
+@announces_router.get("/{teacher_id}/announces/teacher-notices/msg/{note_id}/{id}", summary="특정 교사가 쓴 특정 알림장의 특정 교사 메시지 읽기")
+def read_msg_id(teacher_id: int, note_id: int, id: int, session: SessionDep) -> Teacher_msg:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+msg = next((msg for msg in note.teacher_msgs if msg.id == id), None)
+if not msg:
+raise HTTPException(status_code=404, detail="Teacher_msg not found")
+return msg
+
+@announces_router.post("/{teacher_id}/announces/teacher-notices/msg/{note_id}", summary="특정 교사가 쓴 특정 알림장의 특정 교사 메시지 생성")
+def create_msg(teacher_id: int, note_id: int, session: SessionDep, msg: MsgCreate) -> Teacher_msg:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="입력한 teacher_id와 note_id에 해당하는 note가 없습니다!")
+combined_msg = {"note_id": note_id, **msg.model_dump()}
+db_msg = Teacher_msg.model_validate(combined_msg)
+db_msg.note_id = note_id
+session.add(db_msg)
+session.commit()
+session.refresh(db_msg)
+return db_msg
+
+@announces_router.delete("/{teacher_id}/announces/teacher-notices/msg/{note_id}", summary="특정 교사가 쓴 특정 알림장의 모든 교사 메시지 삭제")
+def delete_msg_note(teacher_id: int, note_id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+if not note.teacher_msgs:
+raise HTTPException(status_code=404, detail="입력한 teacher_id와 note_id에 해당하는 note에 teacher_msg가 없습니다!")
+for db_msg in note.teacher_msgs:
+session.delete(db_msg)
+session.commit()
+return {"ok": True}
+
+@announces_router.delete("/{teacher_id}/announces/teacher-notices/msg/{note_id}/{id}", summary="특정 교사가 쓴 특정 알림장의 특정 교사 메시지 삭제")
+def delete_msg_id(teacher_id: int, note_id: int, id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+db_msg = next((msg for msg in note.teacher_msgs if msg.id == id), None)
+if not db_msg:
+raise HTTPException(status_code=404, detail="Teacher_msg not found")
+session.delete(db_msg)
+session.commit()
+return {"ok": True}
+
+@announces_router.patch("/{teacher_id}/announces/teacher-notices/msg/{note_id}/{id}", summary="특정 교사가 쓴 특정 알림장의 특정 교사 메시지 수정")
+def update_msg(teacher_id: int, note_id: int, id: int, session: SessionDep, msg: MsgUpdate):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not db_note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+db_msg = next((msg for msg in db_note.teacher_msgs if msg.id == id), None)
+if not db_msg:
+raise HTTPException(status_code=404, detail="Teacher_msg not found")
+msg_data = msg.model_dump(exclude_unset=True)
+db_msg.sqlmodel_update(msg_data)
+db_note.last_modified_at = datetime.now(ZoneInfo("Asia/Seoul"))
+session.add(db_msg)
+session.add(db_note)
+session.commit()
+session.refresh(db_msg)
+return db_msg
+
+#숙제 및 과제
+@announces_router.get("/{teacher_id}/announces/teacher-notices/homework/{note_id}", summary="특정 교사가 쓴 특정 알림장의 모든 숙제 읽기")
+def read_homework_note(teacher_id: int, note_id: int, session: SessionDep) -> list[Teacher_homework]:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+return note.teacher_homeworks
+
+@announces_router.get("/{teacher_id}/announces/teacher-notices/homework/{note_id}/{id}", summary="특정 교사가 쓴 특정 알림장의 특정 숙제 읽기")
+def read_homework_id(teacher_id: int, note_id: int, id: int, session: SessionDep) -> Teacher_homework:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+db_hw = next((hw for hw in note.teacher_homeworks if hw.id == id), None)
+if not db_hw:
+raise HTTPException(status_code=404, detail="Teacher_homework not found")
+hw_data = db_hw.model_dump(exclude_unset=True)
+db_hw.sqlmodel_update(hw_data)
+session.add(db_hw)
+session.commit()
+session.refresh(db_hw)
+return db_hw
+
+@announces_router.post("/{teacher_id}/announces/teacher-notices/homework/{note_id}", summary="특정 교사의 특정 알림장에 숙제 생성")
+def create_homework(teacher_id: int, note_id: int, session: SessionDep, hw: HomeworkCreate) -> Teacher_homework:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+combined_hw = {"note_id": note_id, **hw.model_dump()}
+db_hw = Teacher_homework.model_validate(combined_hw)
+db_hw.note_id = note_id
+session.add(db_hw)
+session.commit()
+session.refresh(db_hw)
+return db_hw
+
+@announces_router.delete("/{teacher_id}/announces/teacher-notices/homework/{note_id}", summary="특정 교사의 특정 알림장의 모든 숙제 삭제")
+def delete_hw_note(teacher_id: int, note_id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+for db_hw in note.teacher_homeworks:
+session.delete(db_hw)
+session.commit()
+return {"ok": True}
+
+@announces_router.delete("/{teacher_id}/announces/teacher-notices/homework/{note_id}/{id}", summary="특정 교사의 특정 알림장의 특정 숙제 삭제")
+def delete_hw_id(teacher_id: int, note_id: int, id: int, session: SessionDep):
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+db_hw = next((hw for hw in note.teacher_homeworks if hw.id == id), None)
+if not db_hw:
+raise HTTPException(status_code=404, detail="Teacher_homework not found")
+session.delete(db_hw)
+session.commit()
+return {"ok": True}
+
+@announces_router.patch("/{teacher_id}/announces/teacher-notices/homework/{note_id}/{id}", summary="특정 교사의 특정 알림장의 특정 숙제 수정")
+def update_hw(teacher_id: int, note_id: int, id: int, session: SessionDep, hw: HomeworkUpdate) -> Teacher_homework:
+teacher = session.exec(select(Teacher).where(Teacher.id == teacher_id)).first()
+if not teacher:
+raise HTTPException(status_code=404, detail="Teacher not found")
+db_note = session.exec(
+select(Teacher_note)
+.where(Teacher_note.teacher_id==teacher_id, Teacher_note.id==note_id)
+).first()
+if not db_note:
+raise HTTPException(status_code=404, detail="Teacher_note not found")
+db_hw = next((hw for hw in db_note.teacher_homeworks if hw.id == id), None)
+if not db_hw:
+raise HTTPException(status_code=404, detail="Teacher_homework not found")
+hw_data = hw.model_dump(exclude_unset=True)
+db_hw.sqlmodel_update(hw_data)
+db_note.last_modified_at = datetime.now(ZoneInfo("Asia/Seoul"))
+session.add(db_hw)
+session.add(db_note)
+session.commit()
+session.refresh(db_hw)
+return db_hw
