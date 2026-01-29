@@ -1,0 +1,127 @@
+
+class UserInfo:
+    def __init__(self):
+        self.user_data = {}
+
+    def get_user_info(self):
+        try:
+            name = input("이름을 입력하세요 :").strip() 
+            
+            if name == '':
+                return None
+
+            age = int(input("나이를 입력하세요 :"))
+            self.user_data['이름'] = name
+            self.user_data['나이'] = age
+            return True
+
+        except ValueError:
+            print("나이는 숫자로 입력해야 합니다.")
+            return False
+        """
+        사용자로부터 이름과 나이를 입력받습니다.
+        - 이름이 없거나 공백이면 None을 반환합니다.
+        - 나이가 숫자가 아니거나 입력되지 않으면 ValueError를 처리하고 False를 반환합니다.
+        - 올바르게 입력되면 사용자 정보를 저장하고 True를 반환합니다.
+        """
+        # TODO: 아래 코드를 문제 요구사항에 맞게 완성하세요.
+
+    def display_user_info(self):
+        if self.user_data == {}:
+            print("사용자 정보가 입력되지 않았습니다.")
+        else:
+            print('사용자 정보 :')
+            print(f'이름 : {self.user_data["이름"]}')
+            print(f'나이 : {self.user_data["나이"]}')
+        """
+        저장된 사용자 정보를 출력합니다.
+        - 정보가 없으면 "사용자 정보가 입력되지 않았습니다."를 출력합니다.
+        """
+        # TODO: 아래 코드를 문제 요구사항에 맞게 완성하세요.
+
+
+# 아래 코드는 수정하지 마세요.
+user = UserInfo()
+result = user.get_user_info()
+
+if result is True:
+    user.display_user_info()
+elif result is None:
+    # 이름이 입력되지 않은 경우, display_user_info()가 적절한 메시지를 출력해야 합니다.
+    user.display_user_info()
+# 나이가 잘못 입력된 경우 (result is False), get_user_info()에서 이미 메시지를 출력했으므로
+# 추가적인 동작이 필요 없습니다.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# class UserInfo:
+
+#     def __init__(self):
+#         self.user_data = {}
+#         self.name = ""
+#         self.age = ()
+
+#     def get_user_info(self, name, age):
+#         name = input("이름을 입력하세요 :")
+#         if not name.strip():
+#             return None
+
+#         try:
+            
+        
+
+#         except ValueError:
+#             print('사용자 정보가 입력되지 않았습니다.'
+
+
+#         """
+#         사용자로부터 이름과 나이를 입력받습니다.
+#         - 이름이 없거나 공백이면 None을 반환합니다.
+#         - 나이가 숫자가 아니거나 입력되지 않으면 ValueError를 처리하고 False를 반환합니다.
+#         - 올바르게 입력되면 사용자 정보를 저장하고 True를 반환합니다.
+#         """
+    
+
+#     def display_user_info(self):
+#         try:
+#             if not get_user_info.strip()
+#                 print(f'사용자 정보가 입력되지 않았습니다')
+#         """
+#         저장된 사용자 정보를 출력합니다.
+#         - 정보가 없으면 "사용자 정보가 입력되지 않았습니다."를 출력합니다.
+#         """
+#         # TODO: 아래 코드를 문제 요구사항에 맞게 완성하세요.
+        
+
+# # 아래 코드는 수정하지 마세요.
+# user = UserInfo()
+# result = user.get_user_info()
+
+# if result is True:
+#     user.display_user_info()
+# elif result is None:
+#     # 이름이 입력되지 않은 경우, display_user_info()가 적절한 메시지를 출력해야 합니다.
+#     user.display_user_info()
+# # 나이가 잘못 입력된 경우 (result is False), get_user_info()에서 이미 메시지를 출력했으므로
+# # 추가적인 동작이 필요 없습니다.
+
+# # # input.strip()
+# # if 
+# #     not name():
